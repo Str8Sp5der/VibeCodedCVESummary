@@ -1,0 +1,1525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<title>CVE Intel — Vulnerability Intelligence Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500;600&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════
+   DESIGN TOKENS
+═══════════════════════════════════════════════════════════ */
+:root {
+  --bg:           #060a11;
+  --bg-panel:     #0b1120;
+  --bg-card:      #0f1729;
+  --bg-elevated:  #151e35;
+  --border:       #1a2640;
+  --border-glow:  #1e3260;
+
+  --text:         #cdd9f0;
+  --text-dim:     #6a85b8;
+  --text-muted:   #3a5080;
+
+  --cyan:         #00d4ff;
+  --cyan-dim:     rgba(0, 212, 255, 0.15);
+  --cyan-glow:    rgba(0, 212, 255, 0.08);
+
+  --critical:     #ff3b5c;
+  --critical-bg:  rgba(255, 59, 92, 0.12);
+  --high:         #ff7b2e;
+  --high-bg:      rgba(255, 123, 46, 0.12);
+  --medium:       #ffbb00;
+  --medium-bg:    rgba(255, 187, 0, 0.12);
+  --low:          #00e676;
+  --low-bg:       rgba(0, 230, 118, 0.12);
+  --none:         #4a6a9a;
+  --none-bg:      rgba(74, 106, 154, 0.12);
+
+  --font-display: 'Syne', sans-serif;
+  --font-mono:    'JetBrains Mono', monospace;
+  --font-body:    'DM Sans', sans-serif;
+
+  --r:  6px;
+  --r2: 10px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.5);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   RESET & BASE
+═══════════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { height: 100%; }
+body {
+  height: 100%;
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  /* Subtle noise texture */
+  background-image:
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(0,212,255,0.04) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 110%, rgba(0,212,255,0.03) 0%, transparent 50%),
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+}
+a { color: var(--cyan); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { cursor: pointer; font-family: var(--font-body); }
+input { font-family: var(--font-body); }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--bg-panel); }
+::-webkit-scrollbar-thumb { background: var(--border-glow); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ═══════════════════════════════════════════════════════════
+   LAYOUT
+═══════════════════════════════════════════════════════════ */
+.shell {
+  display: grid;
+  grid-template-rows: 58px 1fr;
+  grid-template-columns: 320px 1fr;
+  height: 100vh;
+}
+
+/* ══ HEADER ══ */
+header {
+  grid-column: 1 / -1;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 20px;
+  position: relative;
+  z-index: 10;
+}
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.logo-icon {
+  width: 30px;
+  height: 30px;
+}
+.logo-text {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.1rem;
+  letter-spacing: 0.04em;
+  color: #fff;
+  white-space: nowrap;
+}
+.logo-text span { color: var(--cyan); }
+
+/* Header search */
+.header-search {
+  flex: 1;
+  max-width: 560px;
+  position: relative;
+}
+.header-search input {
+  width: 100%;
+  height: 36px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 0 12px 0 36px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.header-search input::placeholder { color: var(--text-muted); }
+.header-search input:focus {
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 2px var(--cyan-dim);
+}
+.header-search .search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.search-hint {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-top: 1px;
+  padding-left: 2px;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+.stat-chip {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.stat-chip b { color: var(--cyan); font-weight: 600; }
+.btn-refresh {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  color: var(--text-dim);
+  padding: 6px 14px;
+  font-size: 0.75rem;
+  transition: all 0.2s;
+}
+.btn-refresh:hover {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  background: var(--cyan-glow);
+}
+.btn-refresh.spinning { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ══ SIDEBAR ══ */
+aside {
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.aside-header {
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.aside-header h2 {
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.aside-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 0;
+}
+.cve-list-item {
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(26,38,64,0.5);
+  cursor: pointer;
+  transition: background 0.15s;
+  position: relative;
+}
+.cve-list-item:hover { background: var(--bg-card); }
+.cve-list-item.active {
+  background: var(--bg-elevated);
+  border-left: 2px solid var(--cyan);
+}
+.cve-list-id {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--cyan);
+  margin-bottom: 3px;
+}
+.cve-list-desc {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  line-height: 1.4;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.cve-list-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+}
+.cve-list-date {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+.aside-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+.aside-loading {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+/* ══ MAIN CONTENT ══ */
+main {
+  background: var(--bg);
+  overflow-y: auto;
+  position: relative;
+}
+.main-inner {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 28px;
+}
+
+/* Welcome state */
+.welcome-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 400px;
+  text-align: center;
+  padding: 40px;
+}
+.welcome-icon {
+  margin-bottom: 20px;
+  opacity: 0.4;
+}
+.welcome-state h1 {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 10px;
+}
+.welcome-state p {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  max-width: 380px;
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+.example-cves {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.example-cve-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 8px 14px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--cyan);
+  transition: all 0.15s;
+}
+.example-cve-btn:hover {
+  background: var(--cyan-dim);
+  border-color: var(--cyan);
+  transform: translateY(-1px);
+}
+
+/* CVE Detail */
+.cve-detail { animation: fadeInUp 0.25s ease both; }
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* CVE header row */
+.cve-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.cve-id-block { flex: 1; min-width: 0; }
+.cve-id-display {
+  font-family: var(--font-mono);
+  font-size: 1.6rem;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: -0.01em;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.copy-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  transition: all 0.15s;
+}
+.copy-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+.cve-dates {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  display: flex;
+  gap: 16px;
+}
+.cve-header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.refresh-cve-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 6px 12px;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  transition: all 0.15s;
+}
+.refresh-cve-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+
+/* CVSS gauge panel */
+.cvss-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  padding: 20px;
+  margin-bottom: 16px;
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 24px;
+  align-items: center;
+}
+.cvss-gauge-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.cvss-gauge {
+  position: relative;
+  width: 110px;
+  height: 110px;
+}
+.gauge-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.gauge-track { fill: none; stroke: var(--bg-elevated); stroke-width: 8; }
+.gauge-fill {
+  fill: none;
+  stroke-width: 8;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1.2s cubic-bezier(0.4,0,0.2,1), stroke 0.5s;
+}
+.gauge-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.gauge-score {
+  font-family: var(--font-mono);
+  font-size: 1.6rem;
+  font-weight: 600;
+  line-height: 1;
+}
+.gauge-version {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-top: 2px;
+}
+.cvss-label { font-size: 0.7rem; color: var(--text-dim); text-align: center; }
+
+.cvss-details { display: flex; flex-direction: column; gap: 12px; }
+.cvss-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+.cvss-metric {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 8px 10px;
+}
+.cvss-metric-label {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 3px;
+}
+.cvss-metric-value {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text);
+  font-weight: 500;
+}
+.cvss-vector {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  word-break: break-all;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cvss-vector span { flex: 1; }
+
+/* Tabs */
+.tabs-bar {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+.tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 18px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  transition: all 0.15s;
+  margin-bottom: -1px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active {
+  color: var(--cyan);
+  border-bottom-color: var(--cyan);
+}
+.tab-badge {
+  background: var(--bg-elevated);
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-size: 0.62rem;
+  font-family: var(--font-mono);
+}
+.tab-btn.active .tab-badge { background: var(--cyan-dim); color: var(--cyan); }
+
+.tab-panel { display: none; animation: fadeInUp 0.2s ease both; }
+.tab-panel.active { display: block; }
+
+/* Description card */
+.card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  padding: 18px;
+  margin-bottom: 12px;
+}
+.card-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+.cve-description {
+  font-size: 0.87rem;
+  line-height: 1.7;
+  color: var(--text);
+}
+.cwe-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.cwe-badge {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+
+/* Severity badge */
+.sev-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.sev-badge.CRITICAL { background: var(--critical-bg); color: var(--critical); border: 1px solid rgba(255,59,92,0.3); }
+.sev-badge.HIGH     { background: var(--high-bg);     color: var(--high);     border: 1px solid rgba(255,123,46,0.3); }
+.sev-badge.MEDIUM   { background: var(--medium-bg);   color: var(--medium);   border: 1px solid rgba(255,187,0,0.3); }
+.sev-badge.LOW      { background: var(--low-bg);      color: var(--low);      border: 1px solid rgba(0,230,118,0.3); }
+.sev-badge.NONE,
+.sev-badge.UNKNOWN  { background: var(--none-bg);     color: var(--none);     border: 1px solid rgba(74,106,154,0.3); }
+.sev-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse-dot 2s ease infinite;
+}
+@keyframes pulse-dot {
+  0%,100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Affected systems table */
+.systems-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+.systems-table th {
+  text-align: left;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+.systems-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(26,38,64,0.6);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+.systems-table tr:hover td { background: var(--bg-card); }
+.systems-table td:first-child { color: var(--text); }
+
+/* PoC section */
+.poc-warning {
+  background: rgba(255,59,92,0.06);
+  border: 1px solid rgba(255,59,92,0.25);
+  border-radius: var(--r);
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  font-size: 0.78rem;
+  color: #ff8fab;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  line-height: 1.5;
+}
+.poc-warning-icon { flex-shrink: 0; margin-top: 1px; }
+.poc-item {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  transition: border-color 0.15s;
+}
+.poc-item:hover { border-color: var(--border-glow); }
+.poc-item-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.poc-source-badge {
+  flex-shrink: 0;
+  font-size: 0.6rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.poc-source-badge.ExploitDB { background: rgba(255,123,46,0.15); color: var(--high); border: 1px solid rgba(255,123,46,0.3); }
+.poc-source-badge.GitHub    { background: rgba(0,212,255,0.1);    color: var(--cyan); border: 1px solid rgba(0,212,255,0.25); }
+.poc-title {
+  font-size: 0.83rem;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.4;
+  flex: 1;
+}
+.poc-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.poc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  font-size: 0.72rem;
+  color: var(--cyan);
+  transition: opacity 0.15s;
+}
+.poc-link:hover { opacity: 0.7; }
+.no-poc {
+  text-align: center;
+  padding: 36px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+.no-poc svg { opacity: 0.3; display: block; margin: 0 auto 12px; }
+
+/* References */
+.ref-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.78rem;
+}
+.ref-item:last-child { border-bottom: none; }
+.ref-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 3px;
+}
+.ref-tag {
+  font-size: 0.6rem;
+  font-family: var(--font-mono);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: var(--text-muted);
+}
+.ref-tag.Patch { color: var(--low); border-color: rgba(0,230,118,0.3); background: var(--low-bg); }
+.ref-tag.Exploit { color: var(--critical); border-color: rgba(255,59,92,0.3); background: var(--critical-bg); }
+.ref-tag.Vendor\ Advisory { color: var(--cyan); border-color: rgba(0,212,255,0.3); background: var(--cyan-dim); }
+.ref-url {
+  color: var(--cyan);
+  word-break: break-all;
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+.ref-source {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* Loading spinner */
+.spinner-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px;
+  gap: 16px;
+}
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 2px solid var(--border);
+  border-top-color: var(--cyan);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.spinner-text {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* Error state */
+.error-card {
+  background: rgba(255,59,92,0.06);
+  border: 1px solid rgba(255,59,92,0.2);
+  border-radius: var(--r2);
+  padding: 24px;
+  text-align: center;
+}
+.error-card h3 {
+  color: var(--critical);
+  font-family: var(--font-mono);
+  margin-bottom: 8px;
+}
+.error-card p { font-size: 0.82rem; color: var(--text-dim); }
+
+/* Autocomplete dropdown */
+.search-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  z-index: 100;
+  max-height: 280px;
+  overflow-y: auto;
+  display: none;
+}
+.search-dropdown.open { display: block; }
+.dropdown-item {
+  padding: 9px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+.dropdown-item:last-child { border-bottom: none; }
+.dropdown-item:hover { background: var(--bg-card); }
+.dropdown-cve-id {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--cyan);
+}
+.dropdown-desc {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+.dropdown-no-results {
+  padding: 16px;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+/* Severity color helpers for JS */
+.score-CRITICAL { color: var(--critical); }
+.score-HIGH     { color: var(--high); }
+.score-MEDIUM   { color: var(--medium); }
+.score-LOW      { color: var(--low); }
+.score-NONE, .score-UNKNOWN { color: var(--none); }
+
+/* Stars counter */
+.star-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.65rem;
+  color: var(--medium);
+  font-family: var(--font-mono);
+}
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ═══════════════ HEADER ═══════════════ -->
+  <header>
+    <div class="logo">
+      <svg class="logo-icon" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="1" y="1" width="28" height="28" rx="4" stroke="#00d4ff" stroke-width="1.5" fill="none"/>
+        <path d="M8 15 L13 10 L17 14 L22 8" stroke="#00d4ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="8" cy="15" r="2" fill="#00d4ff"/>
+        <circle cx="13" cy="10" r="2" fill="#00d4ff"/>
+        <circle cx="17" cy="14" r="2" fill="#00d4ff"/>
+        <circle cx="22" cy="8" r="2" fill="#00d4ff"/>
+        <path d="M8 22 H22" stroke="#1a2640" stroke-width="1.5"/>
+        <path d="M10 25 H20" stroke="#1a2640" stroke-width="1.5"/>
+      </svg>
+      <span class="logo-text">CVE<span>Intel</span></span>
+    </div>
+
+    <div class="header-search">
+      <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input id="mainSearch" type="text" placeholder="CVE-2021-44228  or  search description..." autocomplete="off" spellcheck="false" maxlength="120">
+      <div class="search-dropdown" id="searchDropdown"></div>
+    </div>
+
+    <div class="header-actions">
+      <div class="stat-chip" id="statTotal">DB: <b>—</b> CVEs</div>
+      <div class="stat-chip" id="statCritical">Critical: <b style="color:var(--critical)">—</b></div>
+      <button class="btn-refresh" id="triggerUpdate" title="Sync latest CVEs from NVD">
+        ↻ Sync NVD
+      </button>
+    </div>
+  </header>
+
+  <!-- ═══════════════ SIDEBAR ═══════════════ -->
+  <aside>
+    <div class="aside-header">
+      <h2>Recent CVEs</h2>
+    </div>
+    <div class="aside-list" id="recentList">
+      <div class="aside-loading">Loading…</div>
+    </div>
+  </aside>
+
+  <!-- ═══════════════ MAIN ═══════════════ -->
+  <main id="mainContent">
+    <div class="main-inner" id="mainInner">
+      <!-- Welcome -->
+      <div class="welcome-state" id="welcomeState">
+        <svg class="welcome-icon" width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="2" y="2" width="60" height="60" rx="8" stroke="#00d4ff" stroke-width="1.5" fill="none"/>
+          <circle cx="32" cy="28" r="10" stroke="#00d4ff" stroke-width="1.5" fill="none"/>
+          <path d="M32 38 V50" stroke="#00d4ff" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M26 44 H38" stroke="#00d4ff" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M28 24 L30 28 L34 22" stroke="#00d4ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <h1>Vulnerability Intelligence</h1>
+        <p>Search any CVE identifier to get full vulnerability details, CVSS scoring, affected systems, and known proof-of-concept exploits.</p>
+        <div class="example-cves">
+          <button class="example-cve-btn" onclick="loadCVE('CVE-2021-44228')">CVE-2021-44228</button>
+          <button class="example-cve-btn" onclick="loadCVE('CVE-2021-34527')">CVE-2021-34527</button>
+          <button class="example-cve-btn" onclick="loadCVE('CVE-2022-22965')">CVE-2022-22965</button>
+          <button class="example-cve-btn" onclick="loadCVE('CVE-2023-44487')">CVE-2023-44487</button>
+        </div>
+      </div>
+
+      <!-- CVE detail (hidden by default) -->
+      <div class="cve-detail" id="cveDetail" style="display:none"></div>
+
+      <!-- Spinner -->
+      <div class="spinner-wrap" id="loadingState" style="display:none">
+        <div class="spinner"></div>
+        <div class="spinner-text">Querying vulnerability database…</div>
+      </div>
+
+      <!-- Error -->
+      <div id="errorState" style="display:none"></div>
+    </div>
+  </main>
+
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════
+   CVE Intel — Frontend Script
+   Security note: All dynamic content inserted via
+   textContent or safe DOM construction — never innerHTML
+   with user-controlled data. DOMPurify patterns applied.
+═══════════════════════════════════════════════════════════ */
+
+"use strict";
+
+// ── State ────────────────────────────────────────────────
+let activeCveId   = null;
+let searchTimeout = null;
+
+// ── DOM refs ─────────────────────────────────────────────
+const mainSearch    = document.getElementById("mainSearch");
+const searchDropdown= document.getElementById("searchDropdown");
+const recentList    = document.getElementById("recentList");
+const welcomeState  = document.getElementById("welcomeState");
+const cveDetail     = document.getElementById("cveDetail");
+const loadingState  = document.getElementById("loadingState");
+const errorState    = document.getElementById("errorState");
+const statTotal     = document.getElementById("statTotal");
+const statCritical  = document.getElementById("statCritical");
+const triggerUpdate = document.getElementById("triggerUpdate");
+
+// ── Utilities ────────────────────────────────────────────
+/** Safe text setter — never eval, never innerHTML with user data */
+function setText(el, text) { el.textContent = String(text ?? "—"); }
+
+function el(tag, cls, attrs) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (attrs) Object.entries(attrs).forEach(([k,v]) => e.setAttribute(k,v));
+  return e;
+}
+
+function severityClass(sev) {
+  return String(sev || "UNKNOWN").toUpperCase();
+}
+
+function scoreColor(sev) {
+  const map = { CRITICAL: "#ff3b5c", HIGH: "#ff7b2e", MEDIUM: "#ffbb00", LOW: "#00e676" };
+  return map[String(sev).toUpperCase()] || "#4a6a9a";
+}
+
+function formatDate(iso) {
+  if (!iso) return "—";
+  try { return new Date(iso).toLocaleDateString("en-US", { year:"numeric", month:"short", day:"numeric" }); }
+  catch { return iso.slice(0, 10); }
+}
+
+function truncate(str, n) {
+  if (!str) return "";
+  return str.length > n ? str.slice(0, n) + "…" : str;
+}
+
+// ── API helpers ──────────────────────────────────────────
+async function apiFetch(url) {
+  const res = await fetch(url);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+// ── States ───────────────────────────────────────────────
+function showLoading() {
+  welcomeState.style.display  = "none";
+  cveDetail.style.display     = "none";
+  errorState.style.display    = "none";
+  loadingState.style.display  = "flex";
+}
+function showWelcome() {
+  loadingState.style.display  = "none";
+  cveDetail.style.display     = "none";
+  errorState.style.display    = "none";
+  welcomeState.style.display  = "flex";
+}
+function showError(msg) {
+  loadingState.style.display  = "none";
+  welcomeState.style.display  = "none";
+  cveDetail.style.display     = "none";
+  errorState.style.display    = "block";
+  const wrap = el("div", "error-card");
+  const h = el("h3"); setText(h, "⚠ Error"); wrap.appendChild(h);
+  const p = el("p");  setText(p, msg);        wrap.appendChild(p);
+  errorState.replaceChildren(wrap);
+}
+function showDetail(data) {
+  loadingState.style.display  = "none";
+  welcomeState.style.display  = "none";
+  errorState.style.display    = "none";
+  cveDetail.style.display     = "block";
+  renderCVE(data);
+}
+
+// ── Sidebar: Recent CVEs ─────────────────────────────────
+async function loadRecent() {
+  try {
+    const d = await apiFetch("/api/recent?limit=40");
+    renderRecentList(d.results || []);
+  } catch (e) {
+    recentList.innerHTML = "";
+    const msg = el("div", "aside-empty");
+    setText(msg, "Could not load recent CVEs.");
+    recentList.appendChild(msg);
+  }
+}
+
+function renderRecentList(cves) {
+  recentList.innerHTML = "";
+  if (!cves.length) {
+    const empty = el("div", "aside-empty");
+    setText(empty, "No CVEs in local database yet. Search to populate.");
+    recentList.appendChild(empty);
+    return;
+  }
+  cves.forEach(cve => {
+    const sev = severityClass(cve.severity);
+    const item = el("div", "cve-list-item");
+    item.dataset.cveId = cve.id;
+    if (cve.id === activeCveId) item.classList.add("active");
+
+    const idEl = el("div", "cve-list-id");
+    setText(idEl, cve.id);
+    item.appendChild(idEl);
+
+    const descEl = el("div", "cve-list-desc");
+    setText(descEl, cve.description || "No description available.");
+    item.appendChild(descEl);
+
+    const footer = el("div", "cve-list-footer");
+    const badge = el("span", `sev-badge ${sev}`);
+    const dot = el("span", "sev-dot"); badge.appendChild(dot);
+    const sevText = document.createTextNode(sev);
+    badge.appendChild(sevText);
+    footer.appendChild(badge);
+    const dateEl = el("span", "cve-list-date");
+    setText(dateEl, formatDate(cve.published));
+    footer.appendChild(dateEl);
+    item.appendChild(footer);
+
+    item.addEventListener("click", () => loadCVE(cve.id));
+    recentList.appendChild(item);
+  });
+}
+
+// ── Load & Render CVE ────────────────────────────────────
+async function loadCVE(cveId) {
+  if (!cveId) return;
+  const normalized = cveId.trim().toUpperCase();
+  activeCveId = normalized;
+  showLoading();
+  updateSidebarActive(normalized);
+  mainSearch.value = normalized;
+
+  try {
+    const data = await apiFetch(`/api/cve/${encodeURIComponent(normalized)}`);
+    showDetail(data);
+    loadStats();
+    // Refresh sidebar if this is a new CVE
+    if (!recentList.querySelector(`[data-cve-id="${normalized}"]`)) loadRecent();
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+function updateSidebarActive(id) {
+  recentList.querySelectorAll(".cve-list-item").forEach(i => {
+    i.classList.toggle("active", i.dataset.cveId === id);
+  });
+}
+
+// ── CVSS Gauge ───────────────────────────────────────────
+function buildGauge(score, severity) {
+  const R = 44, C = 2 * Math.PI * R;
+  const pct = Math.min((score || 0) / 10, 1);
+  const color = scoreColor(severity);
+
+  const wrap = el("div", "cvss-gauge-wrap");
+  const gaugeDiv = el("div", "cvss-gauge");
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "gauge-svg");
+  svg.setAttribute("viewBox", "0 0 110 110");
+
+  const track = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  track.setAttribute("class", "gauge-track");
+  track.setAttribute("cx", "55"); track.setAttribute("cy", "55");
+  track.setAttribute("r", String(R));
+  svg.appendChild(track);
+
+  const fill = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  fill.setAttribute("class", "gauge-fill");
+  fill.setAttribute("cx", "55"); fill.setAttribute("cy", "55");
+  fill.setAttribute("r", String(R));
+  fill.setAttribute("stroke", color);
+  fill.style.strokeDasharray = String(C);
+  fill.style.strokeDashoffset = String(C); // start at 0 for animation
+  svg.appendChild(fill);
+
+  gaugeDiv.appendChild(svg);
+
+  const center = el("div", "gauge-center");
+  const scoreEl = el("div", "gauge-score");
+  scoreEl.style.color = color;
+  setText(scoreEl, score != null ? score.toFixed(1) : "N/A");
+  center.appendChild(scoreEl);
+  const verEl = el("div", "gauge-version"); setText(verEl, "CVSS"); center.appendChild(verEl);
+  gaugeDiv.appendChild(center);
+  wrap.appendChild(gaugeDiv);
+
+  const label = el("div", "cvss-label"); setText(label, severity || "UNKNOWN"); wrap.appendChild(label);
+
+  // Animate after render
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    fill.style.strokeDashoffset = String(C * (1 - pct));
+  }));
+
+  return wrap;
+}
+
+// ── Main CVE Render ──────────────────────────────────────
+function renderCVE(data) {
+  const frag = document.createDocumentFragment();
+
+  // ─ Header ─
+  const header = el("div", "cve-header");
+
+  const idBlock = el("div", "cve-id-block");
+  const idDisplay = el("div", "cve-id-display");
+  const idText = el("span"); setText(idText, data.id); idDisplay.appendChild(idText);
+  const copyBtn = el("button", "copy-btn");
+  setText(copyBtn, "COPY");
+  copyBtn.addEventListener("click", () => {
+    navigator.clipboard.writeText(data.id).then(() => { setText(copyBtn, "✓"); setTimeout(() => setText(copyBtn, "COPY"), 1500); });
+  });
+  idDisplay.appendChild(copyBtn);
+  idBlock.appendChild(idDisplay);
+
+  const sev = severityClass(data.severity || (data.cvss_v3?.severity) || "UNKNOWN");
+  const badge = el("span", `sev-badge ${sev}`);
+  const dot = el("span", "sev-dot"); badge.appendChild(dot);
+  badge.appendChild(document.createTextNode(sev));
+  idBlock.appendChild(badge);
+
+  const dates = el("div", "cve-dates");
+  const pub = el("span"); setText(pub, "Published " + formatDate(data.published)); dates.appendChild(pub);
+  const mod = el("span"); setText(mod, "Modified " + formatDate(data.modified)); dates.appendChild(mod);
+  if (data.cache) {
+    const cache = el("span"); setText(cache, "Cache: " + data.cache);
+    cache.style.color = "var(--text-muted)"; dates.appendChild(cache);
+  }
+  idBlock.appendChild(dates);
+  header.appendChild(idBlock);
+
+  const headerRight = el("div", "cve-header-right");
+  const refreshBtn = el("button", "refresh-cve-btn");
+  setText(refreshBtn, "↻ Refresh");
+  refreshBtn.addEventListener("click", async () => {
+    setText(refreshBtn, "Refreshing…");
+    try {
+      const fresh = await apiFetch(`/api/cve/${encodeURIComponent(data.id)}/refresh`);
+      showDetail(fresh);
+    } catch(e) { showError(e.message); }
+  });
+  headerRight.appendChild(refreshBtn);
+  header.appendChild(headerRight);
+  frag.appendChild(header);
+
+  // ─ CVSS Panel ─
+  const cvssPanel = el("div", "cvss-panel");
+  const cvssData = data.cvss_v3 || data.cvss_v2;
+  const cvssVersion = data.cvss_v3 ? "v3" : data.cvss_v2 ? "v2" : null;
+  const score = cvssData?.score ?? null;
+  const severity = cvssData?.severity || "UNKNOWN";
+
+  const gaugeWrap = buildGauge(score, severity);
+  cvssPanel.appendChild(gaugeWrap);
+
+  const cvssDetails = el("div", "cvss-details");
+  if (data.cvss_v3) {
+    const v3 = data.cvss_v3;
+    const row1 = el("div", "cvss-row");
+    const metrics = [
+      ["Attack Vector",       v3.attack_vector],
+      ["Attack Complexity",   v3.attack_complexity],
+      ["Privileges Required", v3.privileges_required],
+      ["User Interaction",    v3.user_interaction],
+      ["Scope",               v3.scope],
+      ["Confidentiality",     v3.confidentiality_impact],
+      ["Integrity",           v3.integrity_impact],
+      ["Availability",        v3.availability_impact],
+    ];
+    metrics.forEach(([label, val]) => {
+      if (!val) return;
+      const m = el("div", "cvss-metric");
+      const ml = el("div", "cvss-metric-label"); setText(ml, label); m.appendChild(ml);
+      const mv = el("div", "cvss-metric-value"); setText(mv, val); m.appendChild(mv);
+      row1.appendChild(m);
+    });
+    cvssDetails.appendChild(row1);
+
+    if (v3.vector) {
+      const vecWrap = el("div", "cvss-vector");
+      const vecText = el("span"); setText(vecText, v3.vector); vecWrap.appendChild(vecText);
+      const vecCopy = el("button", "copy-btn"); setText(vecCopy, "COPY");
+      vecCopy.addEventListener("click", () => {
+        navigator.clipboard.writeText(v3.vector).then(() => { setText(vecCopy, "✓"); setTimeout(() => setText(vecCopy, "COPY"), 1500); });
+      });
+      vecWrap.appendChild(vecCopy);
+      cvssDetails.appendChild(vecWrap);
+    }
+  } else if (!cvssData) {
+    const noCvss = el("div", "cvss-metric");
+    const nol = el("div", "cvss-metric-label"); setText(nol, "CVSS Data"); noCvss.appendChild(nol);
+    const nov = el("div", "cvss-metric-value"); setText(nov, "Not available for this CVE"); noCvss.appendChild(nov);
+    cvssDetails.appendChild(noCvss);
+  }
+
+  if (data.cvss_v2 && data.cvss_v3) {
+    const v2row = el("div", "cvss-metric");
+    const v2l = el("div", "cvss-metric-label"); setText(v2l, "CVSSv2 Score"); v2row.appendChild(v2l);
+    const v2v = el("div", "cvss-metric-value");
+    setText(v2v, `${data.cvss_v2.score} (${data.cvss_v2.severity})`); v2row.appendChild(v2v);
+    const v2wrap = el("div", "cvss-row"); v2wrap.appendChild(v2row); cvssDetails.appendChild(v2wrap);
+  }
+
+  cvssPanel.appendChild(cvssDetails);
+  frag.appendChild(cvssPanel);
+
+  // ─ Tabs ─
+  const tabsBar = el("div", "tabs-bar");
+  const tabData = [
+    { key: "overview",  label: "Overview",         count: null },
+    { key: "affected",  label: "Affected Systems",  count: (data.affected_systems || []).length },
+    { key: "poc",       label: "PoC / Exploits",    count: (data.poc || []).length },
+    { key: "refs",      label: "References",         count: (data.refs || []).length },
+  ];
+  const panels = {};
+
+  tabData.forEach((t, i) => {
+    const btn = el("button", `tab-btn${i===0?" active":""}`);
+    btn.dataset.tab = t.key;
+    btn.appendChild(document.createTextNode(t.label + " "));
+    if (t.count !== null) {
+      const badge = el("span", "tab-badge"); setText(badge, t.count); btn.appendChild(badge);
+    }
+    btn.addEventListener("click", () => {
+      tabsBar.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      Object.values(panels).forEach(p => p.classList.remove("active"));
+      panels[t.key].classList.add("active");
+    });
+    tabsBar.appendChild(btn);
+  });
+  frag.appendChild(tabsBar);
+
+  // ─ Overview Panel ─
+  const overviewPanel = el("div", "tab-panel active");
+  overviewPanel.id = "tab-overview";
+  panels.overview = overviewPanel;
+
+  const descCard = el("div", "card");
+  const descLabel = el("div", "card-label"); setText(descLabel, "Vulnerability Description"); descCard.appendChild(descLabel);
+  const descText = el("p", "cve-description"); setText(descText, data.description || "No description available."); descCard.appendChild(descText);
+
+  if (data.cwes && data.cwes.length) {
+    const cweLabel = el("div", "card-label"); setText(cweLabel, "Weakness Classifications (CWE)");
+    cweLabel.style.marginTop = "14px";
+    descCard.appendChild(cweLabel);
+    const cweList = el("div", "cwe-list");
+    data.cwes.forEach(cwe => {
+      const badge = el("span", "cwe-badge"); setText(badge, cwe); cweList.appendChild(badge);
+    });
+    descCard.appendChild(cweList);
+  }
+  overviewPanel.appendChild(descCard);
+  frag.appendChild(overviewPanel);
+
+  // ─ Affected Systems Panel ─
+  const affectedPanel = el("div", "tab-panel");
+  panels.affected = affectedPanel;
+  const systems = data.affected_systems || [];
+  if (systems.length) {
+    const card = el("div", "card");
+    const lbl = el("div", "card-label"); setText(lbl, `${systems.length} Affected Product${systems.length>1?"s":""}`); card.appendChild(lbl);
+    const table = el("table", "systems-table");
+    const thead = el("thead"); const hrow = el("tr");
+    ["Vendor","Product","Version / Range"].forEach(h => { const th = el("th"); setText(th,h); hrow.appendChild(th); });
+    thead.appendChild(hrow); table.appendChild(thead);
+    const tbody = el("tbody");
+    systems.forEach(sys => {
+      const row = el("tr");
+      const td1 = el("td"); setText(td1, sys.vendor || "—");  row.appendChild(td1);
+      const td2 = el("td"); setText(td2, sys.product || "—"); row.appendChild(td2);
+      const td3 = el("td");
+      let ver = sys.version || "—";
+      if (sys.version_start || sys.version_end) {
+        ver = `${sys.version_start ? "≥ "+sys.version_start : ""} ${sys.version_end ? "≤ "+sys.version_end : ""}`.trim();
+      }
+      setText(td3, ver); row.appendChild(td3);
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+    card.appendChild(table);
+    affectedPanel.appendChild(card);
+  } else {
+    const card = el("div", "card");
+    const nop = el("p", "no-poc"); setText(nop, "No CPE configuration data available for this CVE."); card.appendChild(nop);
+    affectedPanel.appendChild(card);
+  }
+  frag.appendChild(affectedPanel);
+
+  // ─ PoC Panel ─
+  const pocPanel = el("div", "tab-panel");
+  panels.poc = pocPanel;
+  const pocs = data.poc || [];
+
+  const warning = el("div", "poc-warning");
+  const warnIcon = document.createTextNode("⚠");
+  const warnIcon2 = el("span", "poc-warning-icon"); warnIcon2.appendChild(warnIcon); warning.appendChild(warnIcon2);
+  const warnText = el("span");
+  setText(warnText, "This information is provided for defensive security research and authorized penetration testing only. Unauthorized use of exploit code against systems you do not own is illegal. Review all linked materials in a controlled lab environment.");
+  warning.appendChild(warnText);
+  pocPanel.appendChild(warning);
+
+  if (pocs.length) {
+    pocs.forEach(poc => {
+      const item = el("div", "poc-item");
+      const header2 = el("div", "poc-item-header");
+      const srcBadge = el("span", `poc-source-badge ${poc.source || "Unknown"}`);
+      setText(srcBadge, poc.source || "?"); header2.appendChild(srcBadge);
+      const title = el("div", "poc-title"); setText(title, poc.title || "Untitled exploit"); header2.appendChild(title);
+      item.appendChild(header2);
+
+      const meta = el("div", "poc-meta");
+      if (poc.type)     { const s = el("span"); setText(s, "Type: " + poc.type);     meta.appendChild(s); }
+      if (poc.platform) { const s = el("span"); setText(s, "Platform: " + poc.platform); meta.appendChild(s); }
+      if (poc.date)     { const s = el("span"); setText(s, formatDate(poc.date));     meta.appendChild(s); }
+      if (poc.stars != null && poc.stars > 0) {
+        const s = el("span", "star-count"); setText(s, "★ " + poc.stars); meta.appendChild(s);
+      }
+      item.appendChild(meta);
+
+      if (poc.description) {
+        const desc2 = el("p"); desc2.style.cssText = "font-size:0.75rem;color:var(--text-dim);margin-top:6px;line-height:1.5;";
+        setText(desc2, poc.description); item.appendChild(desc2);
+      }
+
+      if (poc.url) {
+        const link = el("a", "poc-link");
+        link.href = poc.url; link.target = "_blank"; link.rel = "noopener noreferrer";
+        link.appendChild(document.createTextNode("View exploit →"));
+        item.appendChild(link);
+      }
+      pocPanel.appendChild(item);
+    });
+  } else {
+    const noExp = el("div", "no-poc");
+    noExp.innerHTML = `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
+    const noText = document.createTextNode("No public exploits found for this CVE in ExploitDB or GitHub.");
+    noExp.appendChild(noText);
+    pocPanel.appendChild(noExp);
+  }
+  frag.appendChild(pocPanel);
+
+  // ─ References Panel ─
+  const refsPanel = el("div", "tab-panel");
+  panels.refs = refsPanel;
+  const refs = data.refs || [];
+  if (refs.length) {
+    const card = el("div", "card");
+    const rl = el("div", "card-label"); setText(rl, `${refs.length} Reference${refs.length!==1?"s":""}`); card.appendChild(rl);
+    refs.forEach(ref => {
+      const item = el("div", "ref-item");
+      const left = el("div"); left.style.flex = "1"; left.style.minWidth = "0";
+      const url = el("a", "ref-url"); url.href = ref.url; url.target = "_blank"; url.rel = "noopener noreferrer";
+      setText(url, ref.url); left.appendChild(url);
+      if (ref.source) {
+        const src = el("div", "ref-source"); setText(src, ref.source); left.appendChild(src);
+      }
+      if (ref.tags && ref.tags.length) {
+        const tags = el("div", "ref-tags");
+        ref.tags.forEach(t => {
+          const tag = el("span", "ref-tag " + t); setText(tag, t); tags.appendChild(tag);
+        });
+        left.appendChild(tags);
+      }
+      item.appendChild(left);
+      card.appendChild(item);
+    });
+    refsPanel.appendChild(card);
+  } else {
+    const card = el("div", "card");
+    const np = el("p", "no-poc"); setText(np, "No references available for this CVE."); card.appendChild(np);
+    refsPanel.appendChild(card);
+  }
+  frag.appendChild(refsPanel);
+
+  cveDetail.replaceChildren(frag);
+}
+
+// ── Stats ────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const s = await apiFetch("/api/stats");
+    statTotal.innerHTML = `DB: <b>${(s.total_cves || 0).toLocaleString()}</b> CVEs`;
+    const crit = s.by_severity?.CRITICAL ?? 0;
+    statCritical.innerHTML = `Critical: <b style="color:var(--critical)">${crit.toLocaleString()}</b>`;
+  } catch {}
+}
+
+// ── Search ───────────────────────────────────────────────
+const CVE_RE = /^CVE-\d{4}-\d{4,}$/i;
+
+function handleSearchInput(value) {
+  clearTimeout(searchTimeout);
+  const v = value.trim();
+  if (!v) { closeDropdown(); return; }
+
+  if (CVE_RE.test(v)) {
+    // Exact CVE ID — instant load on Enter, show dropdown option
+    searchTimeout = setTimeout(() => showDropdownDirect(v), 150);
+    return;
+  }
+  // Fuzzy search after short delay
+  searchTimeout = setTimeout(() => performSearch(v), 320);
+}
+
+function showDropdownDirect(cveId) {
+  searchDropdown.innerHTML = "";
+  const item = el("div", "dropdown-item");
+  const idEl = el("div", "dropdown-cve-id"); setText(idEl, cveId.toUpperCase()); item.appendChild(idEl);
+  const desc = el("div", "dropdown-desc"); setText(desc, "↵ Press Enter or click to look up"); item.appendChild(desc);
+  item.addEventListener("click", () => { loadCVE(cveId); closeDropdown(); });
+  searchDropdown.appendChild(item);
+  searchDropdown.classList.add("open");
+}
+
+async function performSearch(query) {
+  if (query.length < 2) return;
+  try {
+    const data = await apiFetch(`/api/search?q=${encodeURIComponent(query)}&limit=8`);
+    const results = data.results || [];
+    searchDropdown.innerHTML = "";
+    if (!results.length) {
+      const none = el("div", "dropdown-no-results"); setText(none, "No results found in local database"); searchDropdown.appendChild(none);
+    } else {
+      results.forEach(cve => {
+        const item = el("div", "dropdown-item");
+        const idEl = el("div", "dropdown-cve-id"); setText(idEl, cve.id); item.appendChild(idEl);
+        const desc = el("div", "dropdown-desc"); setText(desc, cve.description); item.appendChild(desc);
+        item.addEventListener("click", () => { loadCVE(cve.id); closeDropdown(); mainSearch.value = cve.id; });
+        searchDropdown.appendChild(item);
+      });
+    }
+    searchDropdown.classList.add("open");
+  } catch {}
+}
+
+function closeDropdown() { searchDropdown.classList.remove("open"); }
+
+mainSearch.addEventListener("input", e => handleSearchInput(e.target.value));
+mainSearch.addEventListener("keydown", e => {
+  if (e.key === "Enter") {
+    const v = mainSearch.value.trim().toUpperCase();
+    if (CVE_RE.test(v)) { loadCVE(v); closeDropdown(); }
+  }
+  if (e.key === "Escape") closeDropdown();
+});
+document.addEventListener("click", e => {
+  if (!e.target.closest(".header-search")) closeDropdown();
+});
+
+// ── Sync button ──────────────────────────────────────────
+triggerUpdate.addEventListener("click", async () => {
+  triggerUpdate.classList.add("spinning");
+  triggerUpdate.disabled = true;
+  try {
+    const r = await apiFetch("/api/trigger-update");
+    await loadRecent();
+    await loadStats();
+    triggerUpdate.textContent = "✓ Synced";
+    setTimeout(() => { triggerUpdate.textContent = "↻ Sync NVD"; }, 2500);
+  } catch (e) {
+    triggerUpdate.textContent = "⚠ Failed";
+    setTimeout(() => { triggerUpdate.textContent = "↻ Sync NVD"; }, 2500);
+  } finally {
+    triggerUpdate.classList.remove("spinning");
+    triggerUpdate.disabled = false;
+  }
+});
+
+// ── Init ─────────────────────────────────────────────────
+(function init() {
+  loadRecent();
+  loadStats();
+
+  // Check for CVE ID in URL hash (e.g. /#CVE-2021-44228)
+  const hash = window.location.hash.replace("#", "").trim();
+  if (CVE_RE.test(hash)) loadCVE(hash);
+})();
+</script>
+</body>
+</html>
