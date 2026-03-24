@@ -7,15 +7,21 @@ Security hardening implemented:
   3. Security response headers (CSP, X-Frame-Options, HSTS-ready, etc.)
   4. Parameterized SQL queries (via database.py — zero string interpolation)
   5. No eval(), no dangerouslySetInnerHTML, no exec() anywhere in codebase
+  6. User authentication with bcrypt password hashing
+  7. Brute-force protection with failed login tracking
+  8. CSRF protection on all forms
 """
 
 import os
 import re
 import logging
 import bleach
-from flask import Flask, jsonify, request, render_template, abort
+import bcrypt
+from flask import Flask, jsonify, request, render_template, abort, session, redirect, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from flask_wtf.csrf import CSRFProtect
 from apscheduler.schedulers.background import BackgroundScheduler
 from database import CVEDatabase
 from nvd_client import NVDClient
@@ -35,6 +41,32 @@ log = logging.getLogger("cve_intel")
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", os.urandom(32))
 app.config["JSON_SORT_KEYS"] = False
+
+# CSRF Protection
+csrf = CSRFProtect(app)
+
+# Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
+
+# User class for Flask-Login
+class User(UserMixin):
+    def __init__(self, username):
+        self.id = username
+        self.username = username
+
+@login_manager.user_loader
+def load_user(username):
+    user_data = db.get_user(username)
+    if user_data:
+        return User(username)
+    return None
+
+@login_manager.unauthorized_handler
+def unauthorized():
+    """Return 401 JSON response for unauthenticated API requests."""
+    return jsonify({"error": "Authentication required."}), 401
 
 # Rate limiting — stored in memory (swap for Redis in production)
 limiter = Limiter(
@@ -60,6 +92,8 @@ scheduler.start()
 # Input validation                                                     #
 # ------------------------------------------------------------------ #
 _CVE_RE = re.compile(r"^CVE-\d{4}-\d{4,}$")
+_USERNAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_\-]{2,31}$")
+_PASSWORD_RE = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z0-9]).{8,}$")
 
 
 def _validate_cve_id(raw: str) -> str:
@@ -74,6 +108,23 @@ def _validate_cve_id(raw: str) -> str:
     if not _CVE_RE.match(cleaned):
         abort(400, description=f"Invalid CVE ID format: '{cleaned}'")
     return cleaned
+
+
+def _validate_username(raw: str) -> str:
+    """Sanitize and validate username."""
+    cleaned = bleach.clean((raw or "").strip(), tags=[], attributes={}, strip=True)
+    if not _USERNAME_RE.match(cleaned):
+        abort(400, description="Username must be 3-32 chars, alphanumeric and optionally _ or -, cannot start with symbol.")
+    return cleaned
+
+
+def _validate_password(raw: str) -> str:
+    """Validate password strength."""
+    if not raw or len(raw) < 8:
+        abort(400, description="Password must be at least 8 characters long.")
+    if not _PASSWORD_RE.match(raw):
+        abort(400, description="Password must include uppercase, lowercase, number, and symbol.")
+    return raw
 
 
 def _validate_search_query(raw: str) -> str:
@@ -133,6 +184,93 @@ def server_error(e):
 
 
 # ------------------------------------------------------------------ #
+# Authentication Routes                                                #
+# ------------------------------------------------------------------ #
+@app.route("/api/register", methods=["POST"])
+@limiter.limit("5 per hour")
+@csrf.exempt
+def register():
+    """User registration endpoint."""
+    data = request.get_json() or {}
+    username = _validate_username(data.get("username", ""))
+    password = _validate_password(data.get("password", ""))
+
+    # Hash password with bcrypt
+    try:
+        password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    except Exception as exc:
+        log.exception("Password hashing failed: %s", exc)
+        abort(500, description="Registration failed.")
+
+    # Create user
+    if db.create_user(username, password_hash):
+        return jsonify({"message": "Registration successful. You can now log in."}), 201
+    else:
+        abort(400, description="Username already exists.")
+
+
+@app.route("/api/login", methods=["POST"])
+@limiter.limit("10 per hour")  # Stricter limit for login
+@csrf.exempt
+def login():
+    """User login endpoint with brute-force protection."""
+    data = request.get_json() or {}
+    username = _validate_username(data.get("username", ""))
+    password = _validate_password(data.get("password", ""))
+
+    # Check for brute-force attempts (5+ failed attempts in 15 minutes)
+    failed_count = db.get_failed_login_count(username, minutes_back=15)
+    if failed_count >= 5:
+        log.warning("Login blocked for %s due to multiple failed attempts", username)
+        abort(429, description="Account temporarily locked due to too many failed login attempts. Try again later.")
+
+    # Get user from database
+    user_data = db.get_user(username)
+    if not user_data:
+        db.log_failed_login(username, get_remote_address())
+        abort(401, description="Invalid credentials.")
+
+    # Verify password with bcrypt
+    try:
+        password_valid = bcrypt.checkpw(password.encode(), user_data["password_hash"].encode())
+    except Exception as exc:
+        log.exception("Password verification failed: %s", exc)
+        abort(500, description="Authentication failed.")
+    
+    if not password_valid:
+        db.log_failed_login(username, get_remote_address())
+        abort(401, description="Invalid credentials.")
+
+    # Successful login
+    db.clear_failed_logins(username)
+    db.update_last_login(username)
+    user = User(username)
+    login_user(user, remember=False)
+    log.info("User '%s' logged in successfully", username)
+
+    return jsonify({"message": "Login successful.", "username": username}), 200
+
+
+@app.route("/api/logout", methods=["POST"])
+@login_required
+@csrf.exempt
+def logout():
+    """User logout endpoint."""
+    username = current_user.username
+    logout_user()
+    log.info("User '%s' logged out", username)
+    return jsonify({"message": "Logout successful."}), 200
+
+
+@app.route("/api/auth/status", methods=["GET"])
+def auth_status():
+    """Get current authentication status."""
+    if current_user.is_authenticated:
+        return jsonify({"authenticated": True, "username": current_user.username}), 200
+    return jsonify({"authenticated": False}), 200
+
+
+# ------------------------------------------------------------------ #
 # Routes                                                               #
 # ------------------------------------------------------------------ #
 @app.route("/")
@@ -182,8 +320,12 @@ def refresh_cve(raw_id: str):
 @limiter.limit("30 per minute")
 def search():
     """Search CVEs by ID prefix or full-text description."""
-    query   = _validate_search_query(request.args.get("q", ""))
-    limit   = min(int(request.args.get("limit", 25)), 50)
+    query = _validate_search_query(request.args.get("q", ""))
+    try:
+        limit = int(request.args.get("limit", 25))
+    except ValueError:
+        abort(400, description="Limit must be an integer.")
+    limit = max(1, min(limit, 50))
     results = db.search_cves(query, limit=limit)
     return jsonify({"query": query, "count": len(results), "results": results})
 
@@ -192,7 +334,11 @@ def search():
 @limiter.limit("20 per minute")
 def recent():
     """Return recently published CVEs from local DB."""
-    limit   = min(int(request.args.get("limit", 30)), 50)
+    try:
+        limit = int(request.args.get("limit", 30))
+    except ValueError:
+        abort(400, description="Limit must be an integer.")
+    limit = max(1, min(limit, 50))
     results = db.get_recent_cves(limit=limit)
     return jsonify({"count": len(results), "results": results})
 
@@ -210,6 +356,45 @@ def trigger_update():
     """Manually trigger an NVD sync (rate-limited)."""
     count = nvd.update_recent_cves(db, days_back=1)
     return jsonify({"message": f"Update complete. {count} CVEs processed."})
+
+
+@app.route("/api/cve/<path:raw_id>/poc")
+@login_required
+@limiter.limit("30 per minute")
+def get_cve_poc(raw_id: str):
+    """
+    Fetch PoC (Proof-of-Concept) code for a CVE.
+    Requires authentication.
+    """
+    cve_id = _validate_cve_id(raw_id)
+
+    # Get CVE with PoC data
+    cached = db.get_cve(cve_id)
+    if cached and cached.get("poc"):
+        return jsonify({
+            "cve_id": cve_id,
+            "poc": cached["poc"],
+            "accessed_by": current_user.username,
+        })
+
+    # Try to fetch from MITRE and extract PoC
+    fresh = nvd.fetch_cve(cve_id)
+    if not fresh:
+        abort(404, description=f"CVE '{cve_id}' not found.")
+
+    if fresh.get("poc"):
+        return jsonify({
+            "cve_id": cve_id,
+            "poc": fresh["poc"],
+            "accessed_by": current_user.username,
+        })
+    else:
+        return jsonify({
+            "cve_id": cve_id,
+            "poc": [],
+            "message": "No PoC data available for this CVE.",
+            "accessed_by": current_user.username,
+        })
 
 
 # ------------------------------------------------------------------ #

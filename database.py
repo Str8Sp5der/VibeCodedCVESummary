@@ -6,7 +6,7 @@ All queries use parameterized statements. No string interpolation in SQL.
 import sqlite3
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 DB_PATH = Path("data/cve_database.db")
@@ -34,7 +34,8 @@ class CVEDatabase:
     # Schema                                                               #
     # ------------------------------------------------------------------ #
     def _init_schema(self):
-        with self._conn() as conn:
+        conn = self._conn()
+        try:
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS cves (
                     id               TEXT PRIMARY KEY,
@@ -83,7 +84,28 @@ class CVEDatabase:
                     cves_updated INTEGER,
                     success      INTEGER
                 );
+
+                CREATE TABLE IF NOT EXISTS users (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username     TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    created_at   TEXT,
+                    last_login   TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS failed_logins (
+                    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username  TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    ip_address TEXT
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_username ON users(username);
+                CREATE INDEX IF NOT EXISTS idx_failed_logins ON failed_logins(username, timestamp);
             """)
+            conn.commit()
+        finally:
+            conn.close()
 
     # ------------------------------------------------------------------ #
     # Write                                                                #
@@ -234,3 +256,60 @@ class CVEDatabase:
         for f in ["affected_systems", "refs", "cwes", "poc"]:
             d.pop(f, None)
         return d
+
+    # ------------------------------------------------------------------ #
+    # User Management                                                      #
+    # ------------------------------------------------------------------ #
+    def create_user(self, username: str, password_hash: str) -> bool:
+        """Create a new user account. Returns True on success."""
+        try:
+            with self._conn() as conn:
+                conn.execute(
+                    "INSERT INTO users (username, password_hash, created_at) VALUES (?,?,?)",
+                    (username, password_hash, datetime.utcnow().isoformat()),
+                )
+            return True
+        except sqlite3.IntegrityError:
+            log.warning("User registration failed: username '%s' already exists", username)
+            return False
+
+    def get_user(self, username: str) -> dict | None:
+        """Get user by username."""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM users WHERE username = ?", (username,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def update_last_login(self, username: str) -> None:
+        """Update user's last login timestamp."""
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE users SET last_login = ? WHERE username = ?",
+                (datetime.utcnow().isoformat(), username),
+            )
+
+    def log_failed_login(self, username: str, ip_address: str = "") -> None:
+        """Log a failed login attempt."""
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO failed_logins (username, timestamp, ip_address) VALUES (?,?,?)",
+                (username, datetime.utcnow().isoformat(), ip_address),
+            )
+
+    def get_failed_login_count(self, username: str, minutes_back: int = 15) -> int:
+        """Get number of failed logins in the last N minutes."""
+        cutoff_time = (datetime.utcnow() - timedelta(minutes=minutes_back)).isoformat()
+        with self._conn() as conn:
+            result = conn.execute(
+                "SELECT COUNT(*) FROM failed_logins WHERE username = ? AND timestamp > ?",
+                (username, cutoff_time),
+            ).fetchone()
+        return result[0] if result else 0
+
+    def clear_failed_logins(self, username: str) -> None:
+        """Clear failed login attempts for a user."""
+        with self._conn() as conn:
+            conn.execute(
+                "DELETE FROM failed_logins WHERE username = ?", (username,)
+            )
