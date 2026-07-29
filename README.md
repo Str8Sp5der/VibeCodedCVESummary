@@ -8,11 +8,11 @@
 ### Step 1: Get the Project
 ```powershell
 # Clone the repository
-git clone https://github.com/Str8Sp5der/VibeCodedCVESummary
-cd VibeCodedCVESummary
+git clone https://github.com/Str8Sp5der/CVESummary
+cd CVESummary
 
 # Or if already downloaded, navigate to the folder
-cd C:\Users\<YourUsername>\Downloads\VibeCodedCVESummary
+cd C:\Users\<YourUsername>\Downloads\CVESummary
 ```
 
 ### Step 2: Create Virtual Environment
